@@ -1,0 +1,106 @@
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  PROJECT_PATH: /example/abc/abc-testing/test-k8s-cicd/access-control
+  NAME_SPACE_TESTING: abc-testing
+
+image: golang:1.8-alpine
+
+stages:
+  - unittest
+  - sonarqube
+  - build-contract
+  - deploy-contract
+  - run-contract
+  - build-service
+  - deploy-service
+  - api-test
+  # - push-image
+
+unit_tests:
+  stage: unittest
+  script:
+    - go test ./router/...  -coverprofile=coverage.out
+
+sonarqube_check:
+  stage: sonarqube
+  allow_failure: true
+  script:
+    - go test ./router/...  -coverprofile=coverage.out
+    - source /home/gitlab-runner/.bashrc
+    - |
+      sonar-scanner \
+        -Dsonar.projectKey=vindr-lab-access-control \
+        -Dsonar.sources=. \
+        -Dsonar.host.url=http://example_host:example_port \
+        -Dsonar.login=example
+
+build-contract:
+  stage: build-contract
+  image: docker
+  services: 
+    - docker:dind
+  script:
+    - docker build -f Dockerfile.contract -t $CI_REGISTRY$PROJECT_PATH:contract .
+    - docker login $CI_REGISTRY -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
+    - docker push $CI_REGISTRY$PROJECT_PATH:contract
+
+deploy-contract:
+  stage: deploy-contract
+  image:
+    name: bitnami/kubectl:latest
+    entrypoint: ['']
+  script:
+    - kubectl config get-contexts
+    - kubectl config use-context example/abc/abc-testing/test-k8s-cicd/test-gitlab-agent:dev-agent-1
+    - kubectl apply -f ac.deployment.contract.yaml --namespace $NAME_SPACE_TESTING
+
+run-contract:
+  stage: run-contract
+  image:
+    name: bitnami/kubectl:latest
+    entrypoint: ['']
+  script:
+    - sleep 60
+    - kubectl config get-contexts
+    - kubectl config use-context example/abc/abc-testing/test-k8s-cicd/test-gitlab-agent:dev-agent-1
+    - POD_NAME=$(kubectl get pods --namespace $NAME_SPACE_TESTING -l "app=abc-ac-contract" -o "jsonpath={.items[0].metadata.name}")
+    - kubectl exec -n $NAME_SPACE_TESTING $POD_NAME -- /bin/bash ./setup-debug.sh dev
+    - kubectl exec -n $NAME_SPACE_TESTING $POD_NAME -- apt update
+    - kubectl exec -n $NAME_SPACE_TESTING $POD_NAME -- apt install python3-pip -y
+    - kubectl exec -n $NAME_SPACE_TESTING $POD_NAME -- apt install make -y
+    - kubectl exec -n $NAME_SPACE_TESTING $POD_NAME -- pip install requests
+    - kubectl exec -n $NAME_SPACE_TESTING $POD_NAME -- python3 clean-data-contract.py
+    - kubectl exec -n $NAME_SPACE_TESTING $POD_NAME -- make provider
+
+
+build-service:
+  stage: build-service
+  image: docker
+  services: 
+    - docker:dind
+  script:
+    - docker build -f Dockerfile -t $CI_REGISTRY$PROJECT_PATH .
+    - docker login $CI_REGISTRY -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
+    - docker push $CI_REGISTRY$PROJECT_PATH
+
+
+deploy-service:
+  stage: deploy-service
+  image:
+    name: bitnami/kubectl:latest
+    entrypoint: ['']
+  script:
+    - kubectl config get-contexts
+    - kubectl config use-context example/abc/abc-testing/test-k8s-cicd/test-gitlab-agent:dev-agent-1
+    - kubectl apply -f ac.deployment.yaml --namespace $NAME_SPACE_TESTING
+  
+api-test:
+  stage: api-test
+  image:
+    name: bitnami/kubectl:latest
+    entrypoint: ['']
+  script:
+    - kubectl config get-contexts
+    - kubectl config use-context example/abc/abc-testing/test-k8s-cicd/test-gitlab-agent:dev-agent-1
+    - POD_NAME=$(kubectl get pods --namespace $NAME_SPACE_TESTING -l "app=abc-functional-tester-api" -o "jsonpath={.items[0].metadata.name}")
+    - kubectl exec -n $NAME_SPACE_TESTING $POD_NAME -- /bin/bash ./run.sh

@@ -1,0 +1,27 @@
+name: Automation Tests
+
+on:
+workflow_dispatch:
+schedule:
+  - cron: 30 13 * * 3
+  - cron: 0 6 * * 1
+
+jobs:
+  ui-chrome-smoke-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Smoke Test
+        uses: actions/checkout@v2
+        if: github.event.schedule == '30 13 * * 3'
+        with:
+          # Run regression test suite
+          command: npm run smoke-test
+  ui-chrome-sanity-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sanity Test
+        uses: actions/checkout@v2
+        if: github.event.schedule != '30 13 * * 3'
+        with:
+          # Run sanity test suite
+          command: npm run sanity-test

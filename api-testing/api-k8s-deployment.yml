@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: abc-functional-tester-api
+  namespace: abc-testing
+spec:
+  selector:
+    matchLabels:
+      app: abc-functional-tester-api
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: abc-functional-tester-api
+    spec:
+      hostAliases:
+        - ip: "10.124.68.169"
+          hostnames:
+            - "dev.abc.io"
+      containers:
+        - image: registry.gitlab.com/example/abc/abc-testing/test-k8s-cicd/api-test
+          name: abc-functional-tester-api
+          resources: {}
+          volumeMounts:
+            - mountPath: /app/.env
+              name: functional-tester-configmap
+              subPath: app.conf
+              readOnly: true
+            - mountPath: /app/run.sh
+              name: functional-tester-configmap
+              subPath: run.sh
+              readOnly: true
+            - mountPath: /app/publish_test_result.sh
+              name: functional-tester-configmap
+              subPath: publish_test_result.sh
+              readOnly: true
+          imagePullPolicy: Always
+      volumes:
+        - name: functional-tester-configmap
+          configMap:
+            name: functional-tester-configmap
+      imagePullSecrets:
+        - name: vindr-ecr
+        - name: gitlab-credentials
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: functional-tester-configmap
+  namespace: abc-testing
+data:
+  app.conf: |
+    VINDR_HOST=https://dev.abc.io
+    REDIS_PASSWORD=example
+    REDIS_HOST=redis.abc-testing
+    REDIS_TCP_PORT=6379
+    SLACK_BOT_TOKEN=example
+    SLACK_CHANNEL_ID=example
+    IS_NOTIFIED=true
+    POSTGRESQL_HOST_NAME=postgres-backend.abc
+    POSTGRESQL_USERNAME=postgres
+    POSTGRESQL_PASSWORD=example
+    POSTGRESQL_DATABASE=example
+    POSTGRESQL_DIALECT=postgres
+    POSTGRESQL_PORT=5432
+  publish_test_result.sh: |
+    #!/bin/bash
+
+    # This directory is where you have all your results locally, generally named as `allure-results`
+    ALLURE_RESULTS_DIRECTORY='allure-results'
+    ALLURE_REPORTS_DIRECTORY='allure-report'
+    # This url is where the Allure container is deployed. We are using localhost as example
+    ALLURE_SERVER="$1"
+    CURRENT_DATE=$(date +"%Y-%m-%d-%T")
+    # Project ID according to existent projects in your Allure container - Check endpoint for project creation >> `[POST]/projects`
+    PROJECT_ID="$2-${CURRENT_DATE}"
+    #PROJECT_ID='my-project-id'
+    zip -r "${ALLURE_REPORTS_DIRECTORY}.zip" ${ALLURE_REPORTS_DIRECTORY}
+
+    set -o xtrace
+    curl -X POST "$ALLURE_SERVER/api/report/$PROJECT_ID" -H  "accept: */*" -H 'Content-Type: multipart/form-data' -F "allureReportArchive=@${ALLURE_REPORTS_DIRECTORY}.zip;type=application/zip"
+    rm -rf "$ALLURE_RESULTS_DIRECTORY"
+    rm -rf "${ALLURE_REPORTS_DIRECTORY}"
+    rm -rf "${ALLURE_REPORTS_DIRECTORY}.zip"
+  run.sh: |
+    npm run api-test
+    npm run allure-report-generate
+    chmod +x /app/publish_test_result.sh
+    /bin/bash /app/publish_test_result.sh http://allure-server.abc-testing:8080 single-api-test
+---

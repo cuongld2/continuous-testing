@@ -1,0 +1,25 @@
+variables:
+  PROJECT_PATH: /example/abc/abc-testing/test-k8s-cicd/api-test
+stages:
+  - build
+  - deploy
+
+build:
+  stage: build
+  image: docker
+  services: 
+    - docker:dind
+  script:
+    - docker build -t $CI_REGISTRY$PROJECT_PATH .
+    - docker login $CI_REGISTRY -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD
+    - docker push $CI_REGISTRY$PROJECT_PATH
+
+deploy:
+  stage: deploy
+  image:
+    name: bitnami/kubectl:latest
+    entrypoint: ['']
+  script:
+    - kubectl config get-contexts
+    - kubectl config use-context xyx/abc/abc-testing/test-k8s-cicd/test-gitlab-agent:dev-agent-1
+    - kubectl apply -f functional-tester.yaml --namespace abc-testing

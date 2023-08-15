@@ -26,7 +26,7 @@ sonarqube_check:
   allow_failure: true
   script:
     - go test ./router/...  -coverprofile=coverage.out
-    - source /home/gitlab-runner/.bashrc
+    - source /home/gitlab-runner/.bashrc 
     - |
       sonar-scanner \
         -Dsonar.projectKey=vindr-lab-access-control \

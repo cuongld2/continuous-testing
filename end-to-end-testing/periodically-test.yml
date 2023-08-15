@@ -3,25 +3,23 @@ name: Automation Tests
 on:
 workflow_dispatch:
 schedule:
-  - cron: 30 13 * * 3
-  - cron: 0 6 * * 1
+  - cron: 30 2 * * *
+  - cron: 0 1 * * *
 
 jobs:
-  ui-chrome-smoke-tests:
+  ui-chrome-qa-tests:
     runs-on: ubuntu-latest
     steps:
-      - name: Smoke Test
+      - name: QA
         uses: actions/checkout@v2
-        if: github.event.schedule == '30 13 * * 3'
+        if: github.event.schedule == '30 2 * * *'
         with:
-          # Run regression test suite
-          command: npm run smoke-test
-  ui-chrome-sanity-tests:
+          command: npm run qa-test
+  ui-chrome-uat-tests:
     runs-on: ubuntu-latest
     steps:
-      - name: Sanity Test
+      - name: UAT
         uses: actions/checkout@v2
-        if: github.event.schedule != '30 13 * * 3'
+        if: github.event.schedule != '30 2 * * *'
         with:
-          # Run sanity test suite
-          command: npm run sanity-test
+          command: npm run uat-test
